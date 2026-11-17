@@ -54,6 +54,30 @@ python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 ```
 
+## Generar las partículas
+
+```bash
+python comun/generar_particulas.py --distribucion uniforme --n 2000      # uniforme, dos_cumulos o concentrada
+bash scripts/generar_datos.sh .venv/bin/python                           # todos: 2.000 en datos/, 20.000 a 200.000 en datos/grandes/
+```
+
+Los archivos de 2.000 partículas vienen en `datos/`. Los grandes no se suben a git; se regeneran idénticos con la semilla fija.
+
+## Verificar una versión
+
+Cada versión acepta `--guardar-aceleraciones archivo` (aceleraciones del estado inicial, `ax ay az` por fila) y `--guardar-final archivo` (estado final, 7 columnas). Con esos archivos:
+
+```bash
+python comun/verificar.py fuerzas --particulas datos/uniforme_2000.txt --aceleraciones acel.txt --epsilon 0.01
+python comun/verificar.py energia --inicial datos/uniforme_2000.txt --final final.txt --epsilon 0.01
+```
+
+La primera compara contra la suma directa O(N²) y reporta el error relativo promedio, mediano y máximo. La segunda recalcula E = K + U de forma exacta al inicio y al final. Para conocer el error de energía que pone el integrador solo, sin Barnes-Hut:
+
+```bash
+python comun/referencia_directa.py simular --particulas datos/uniforme_2000.txt --epsilon 0.01 --dt 0.001 --pasos 100
+```
+
 ## Compilar y ejecutar
 
 Las instrucciones de cada versión se agregan a medida que se construyen.

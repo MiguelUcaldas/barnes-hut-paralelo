@@ -26,20 +26,7 @@ void sumar_tiempos(TiemposPorFase *acumulado, TiemposPorFase paso)
     acumulado->fuerzas += paso.fuerzas;
     acumulado->integracion += paso.integracion;
     acumulado->total += paso.total;
-}
-
-void imprimir_entorno(const char *version, const Configuracion *config, int num_particulas, int trabajadores)
-{
-    printf("Barnes-Hut, versión %s\n", version);
-    printf("  entrada:             %s (distribución %s)\n", config->entrada, config->distribucion);
-    printf("  N:                   %d\n", num_particulas);
-    printf("  pasos:               %d\n", config->pasos);
-    printf("  θ:                   %g\n", config->theta);
-    printf("  ε:                   %g\n", config->epsilon);
-    printf("  Δt:                  %g\n", config->dt);
-    printf("  trabajadores:        %d\n", trabajadores);
-    printf("  núcleos disponibles: %ld\n", sysconf(_SC_NPROCESSORS_ONLN));
-    printf("\n");
+    acumulado->desbalance += paso.desbalance;
 }
 
 /* printf cuenta bytes y no letras: en UTF-8 "ó" ocupa 2 bytes. Para que las
@@ -56,12 +43,27 @@ static int bytes_de_mas(const char *texto)
     return extra;
 }
 
+void imprimir_entorno(const char *version, const Configuracion *config, int num_particulas)
+{
+    printf("Barnes-Hut, versión %s\n", version);
+    printf("  entrada:             %s (distribución %s)\n", config->entrada, config->distribucion);
+    printf("  N:                   %d\n", num_particulas);
+    printf("  pasos:               %d\n", config->pasos);
+    printf("  θ:                   %g\n", config->theta);
+    printf("  ε:                   %g\n", config->epsilon);
+    printf("  Δt:                  %g\n", config->dt);
+    printf("  hilos:               %d\n", config->hilos);
+    printf("  reparto:             %s\n", nombre_del_reparto(config->reparto));
+    printf("  núcleos disponibles: %ld\n", sysconf(_SC_NPROCESSORS_ONLN));
+    printf("\n");
+}
+
 void imprimir_encabezado_pasos(void)
 {
-    const char *columnas[] = {"paso", "construcción", "ordenamiento", "fuerzas", "integración", "total"};
-    const int anchos[] = {6, 13, 13, 10, 12, 10};
-    printf("Tiempos por paso (ms)\n");
-    for (int k = 0; k < 6; k++) {
+    const char *columnas[] = {"paso", "construcción", "ordenamiento", "fuerzas", "integración", "total", "desbalance"};
+    const int anchos[] = {6, 13, 13, 10, 12, 10, 11};
+    printf("Tiempos por paso (ms); desbalance = hilo más lento / promedio en fuerzas\n");
+    for (int k = 0; k < 7; k++) {
         printf("%s%*s", k > 0 ? " " : "", anchos[k] + bytes_de_mas(columnas[k]), columnas[k]);
     }
     printf("\n");
@@ -69,9 +71,9 @@ void imprimir_encabezado_pasos(void)
 
 void imprimir_paso(int paso, TiemposPorFase tiempos)
 {
-    printf("%6d %13.2f %13.2f %10.2f %12.2f %10.2f\n", paso,
+    printf("%6d %13.2f %13.2f %10.2f %12.2f %10.2f %11.2f\n", paso,
            1e3 * tiempos.construccion, 1e3 * tiempos.ordenamiento, 1e3 * tiempos.fuerzas,
-           1e3 * tiempos.integracion, 1e3 * tiempos.total);
+           1e3 * tiempos.integracion, 1e3 * tiempos.total, tiempos.desbalance);
 }
 
 void imprimir_energia(int paso, double energia, double energia_inicial)
@@ -96,6 +98,9 @@ void imprimir_resumen(TiemposPorFase acumulado, int pasos, double energia_inicia
     imprimir_fase("fuerzas", acumulado.fuerzas, pasos, acumulado.total);
     imprimir_fase("integración", acumulado.integracion, pasos, acumulado.total);
     imprimir_fase("total", acumulado.total, pasos, acumulado.total);
+    if (pasos > 0) {
+        printf("  desbalance promedio en fuerzas: %.2f\n", acumulado.desbalance / pasos);
+    }
 
     printf("\nEnergía (calculada con el árbol)\n");
     printf("  inicial:        %.10f\n", energia_inicial);
@@ -103,7 +108,7 @@ void imprimir_resumen(TiemposPorFase acumulado, int pasos, double energia_inicia
     printf("  error relativo: %.3e\n", error_relativo(energia_final, energia_inicial));
 }
 
-void agregar_fila_csv(const Configuracion *config, const char *version, int num_particulas, int trabajadores,
+void agregar_fila_csv(const Configuracion *config, const char *version, int num_particulas,
                       TiemposPorFase acumulado, double energia_inicial, double energia_final)
 {
     FILE *archivo = fopen(config->csv, "a");
@@ -121,7 +126,7 @@ void agregar_fila_csv(const Configuracion *config, const char *version, int num_
     }
     fprintf(archivo, "%s,%s,%d,%d,%g,%g,%g,%d,%.6f,%.6f,%.6f,%.6f,%.6f,%.10g,%.10g,%.6e\n",
             version, config->distribucion, num_particulas, config->pasos,
-            config->theta, config->epsilon, config->dt, trabajadores,
+            config->theta, config->epsilon, config->dt, config->hilos,
             acumulado.construccion, acumulado.ordenamiento, acumulado.fuerzas,
             acumulado.integracion, acumulado.total,
             energia_inicial, energia_final, error_relativo(energia_final, energia_inicial));

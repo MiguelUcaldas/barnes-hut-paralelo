@@ -1,9 +1,21 @@
 #include "configuracion.h"
 
 #include <getopt.h>
+#include <omp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+static const char *NOMBRES_DE_REPARTO[] = {
+    [REPARTO_ESTATICO] = "estatico",
+    [REPARTO_DINAMICO] = "dinamico",
+    [REPARTO_COSTO] = "costo",
+};
+
+const char *nombre_del_reparto(Reparto reparto)
+{
+    return NOMBRES_DE_REPARTO[reparto];
+}
 
 static void mostrar_ayuda(const char *programa)
 {
@@ -13,6 +25,8 @@ static void mostrar_ayuda(const char *programa)
            "  --dt valor                  paso de tiempo Δt (0.001)\n"
            "  --theta valor               criterio de apertura θ (0.5)\n"
            "  --epsilon valor             suavizado ε (0.01)\n"
+           "  --hilos N                   hilos de OpenMP (por defecto, OMP_NUM_THREADS o todos)\n"
+           "  --reparto tipo              estatico, dinamico o costo (dinamico)\n"
            "  --cada-energia K            imprimir la energía cada K pasos (0 = solo inicio y final)\n"
            "  --guardar-aceleraciones f   aceleraciones del estado inicial, para verificar.py\n"
            "  --guardar-final f           estado final, para verificar.py\n"
@@ -44,6 +58,17 @@ static void error_de_opcion(const char *mensaje)
     exit(1);
 }
 
+static Reparto reparto_desde_texto(const char *texto)
+{
+    for (int r = REPARTO_ESTATICO; r <= REPARTO_COSTO; r++) {
+        if (strcmp(texto, NOMBRES_DE_REPARTO[r]) == 0) {
+            return (Reparto)r;
+        }
+    }
+    error_de_opcion("--reparto debe ser estatico, dinamico o costo");
+    return REPARTO_COSTO;
+}
+
 Configuracion leer_configuracion(int argc, char **argv)
 {
     Configuracion config = {
@@ -53,6 +78,8 @@ Configuracion leer_configuracion(int argc, char **argv)
         .dt = 0.001,
         .theta = 0.5,
         .epsilon = 0.01,
+        .hilos = omp_get_max_threads(),
+        .reparto = REPARTO_DINAMICO,
         .cada_energia = 0,
         .guardar_aceleraciones = NULL,
         .guardar_final = NULL,
@@ -65,6 +92,8 @@ Configuracion leer_configuracion(int argc, char **argv)
         {"dt", required_argument, NULL, 'd'},
         {"theta", required_argument, NULL, 't'},
         {"epsilon", required_argument, NULL, 's'},
+        {"hilos", required_argument, NULL, 'H'},
+        {"reparto", required_argument, NULL, 'r'},
         {"cada-energia", required_argument, NULL, 'k'},
         {"guardar-aceleraciones", required_argument, NULL, 'a'},
         {"guardar-final", required_argument, NULL, 'f'},
@@ -82,6 +111,8 @@ Configuracion leer_configuracion(int argc, char **argv)
         case 'd': config.dt = atof(optarg); break;
         case 't': config.theta = atof(optarg); break;
         case 's': config.epsilon = atof(optarg); break;
+        case 'H': config.hilos = atoi(optarg); break;
+        case 'r': config.reparto = reparto_desde_texto(optarg); break;
         case 'k': config.cada_energia = atoi(optarg); break;
         case 'a': config.guardar_aceleraciones = optarg; break;
         case 'f': config.guardar_final = optarg; break;
@@ -97,6 +128,7 @@ Configuracion leer_configuracion(int argc, char **argv)
     if (config.dt <= 0.0) error_de_opcion("--dt debe ser positivo");
     if (config.theta < 0.0) error_de_opcion("--theta no puede ser negativo");
     if (config.epsilon < 0.0) error_de_opcion("--epsilon no puede ser negativo");
+    if (config.hilos < 1) error_de_opcion("--hilos debe ser 1 o más");
 
     if (config.distribucion[0] == '\0') {
         distribucion_desde_ruta(config.entrada, config.distribucion, sizeof config.distribucion);

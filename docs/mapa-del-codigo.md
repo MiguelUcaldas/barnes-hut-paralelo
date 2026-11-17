@@ -31,28 +31,67 @@ Dónde está cada concepto, para encontrarlo rápido durante la demostración. S
 | Tolerancias de aprobación | `comun/verificar.py` | `TOLERANCIA_FUERZAS`, `TOLERANCIA_ENERGIA` |
 | Generar todos los archivos de datos | `scripts/generar_datos.sh` | — |
 
-## Barnes-Hut en C (`c_openmp/`)
+## C con OpenMP (`c_openmp/`)
+
+### Lo que se puede pedir modificar en vivo
+
+| Concepto | Archivo | Función / constante |
+|---|---|---|
+| **Criterio de apertura θ** | `c_openmp/fuerzas.c` | `celda_suficientemente_lejana` |
+| **Reparto de partículas entre hilos** (estático y por costo) | `c_openmp/fuerzas.c` | `calcular_limites`, `limites_por_costo` |
+| Reparto dinámico (tamaño de bloque) | `c_openmp/fuerzas.c` | `BLOQUE_DINAMICO`, `calcular_aceleraciones` |
+| Reparto por defecto | `c_openmp/configuracion.c` | `.reparto` en `leer_configuracion` |
+| Tamaño mínimo de un subárbol para crear una tarea | `c_openmp/arbol.c` | `UMBRAL_TAREA` |
+| Tamaño mínimo para ordenar en paralelo | `c_openmp/morton.c` | `UMBRAL_ORDENAMIENTO_SECUENCIAL` |
+
+### Fases del paso
 
 | Concepto | Archivo | Función |
 |---|---|---|
-| **Criterio de apertura θ** | `c_openmp/fuerzas.c` | `celda_suficientemente_lejana` |
-| Interacción gravitacional con suavizado ε | `c_openmp/fuerzas.c` | `sumar_atraccion` |
-| Recorrido del árbol para una partícula | `c_openmp/fuerzas.c` | `recorrer_arbol` |
-| Ciclo de fuerzas sobre todas las partículas | `c_openmp/fuerzas.c` | `calcular_aceleraciones` |
-| Energía cinética / potencial / total | `c_openmp/fuerzas.c` | `energia_cinetica`, `energia_potencial`, `energia_total` |
-| Estructura del nodo y del árbol | `c_openmp/arbol.h` | `Nodo`, `Arbol` |
-| Cubo raíz | `c_openmp/arbol.c` | `calcular_cubo_raiz` |
-| Elegir el octante de una posición | `c_openmp/arbol.c` | `octante` |
-| Crear los 8 hijos | `c_openmp/arbol.c` | `subdividir`, `nuevo_nodo` |
-| Insertar una partícula | `c_openmp/arbol.c` | `insertar` |
-| Masa y centro de masa de cada nodo | `c_openmp/arbol.c` | `calcular_masas` |
-| Construcción completa (todo lo anterior) | `c_openmp/arbol.c` | `construir_arbol` |
-| Partículas en el mismo punto | `c_openmp/arbol.h`, `arbol.c` | `PROFUNDIDAD_MAXIMA`, `siguiente`, `insertar` |
 | Paso leapfrog completo | `c_openmp/barnes_hut.c` | `avanzar_un_paso`, `media_patada`, `deriva` |
+| Cubo raíz → orden → árbol → fuerzas (con tiempos) | `c_openmp/barnes_hut.c` | `recalcular_aceleraciones` |
 | Cálculo inicial de fuerzas y ciclo de pasos | `c_openmp/barnes_hut.c` | `main` |
-| Nombre de la versión en el CSV | `c_openmp/barnes_hut.c` | `VERSION` |
+| Número de hilos fijo (`omp_set_dynamic(0)`) | `c_openmp/barnes_hut.c` | `main` |
+
+### Ordenamiento por Morton
+
+| Concepto | Archivo | Función |
+|---|---|---|
+| Cubo raíz (reducción paralela de mínimos y máximos) | `c_openmp/morton.c` | `calcular_cubo_raiz` |
+| Coordenada → rebanada de 21 bits | `c_openmp/morton.c` | `rebanada` |
+| Intercalar bits x, y, z (código Morton) | `c_openmp/morton.c` | `intercalar_bits`, `calcular_codigos` |
+| Merge sort paralelo con tareas | `c_openmp/morton.c` | `ordenar_mezclando`, `mezclar`, `comparar_pares` |
+| Ordenar y reacomodar las partículas | `c_openmp/morton.c` | `ordenar_por_morton` |
+| Mover las partículas a su nuevo lugar | `c_openmp/particulas.c` | `reordenar_particulas` |
+| Bits por eje | `c_openmp/morton.h` | `BITS_POR_EJE` |
+
+### Árbol
+
+| Concepto | Archivo | Función |
+|---|---|---|
+| Estructura del nodo y del árbol | `c_openmp/arbol.h` | `Nodo`, `Arbol`, `BloqueDeNodos` |
+| Construcción paralela (tareas) | `c_openmp/arbol.c` | `construir_arbol`, `construir_nodo` |
+| Hijo en el que cae un código en cada nivel | `c_openmp/arbol.c` | `octante_en_nivel` |
+| Reserva de nodos por bloques de cada hilo (atómica) | `c_openmp/arbol.c` | `reservar_hijos`, `NODOS_POR_BLOQUE` |
+| Masa y centro de masa | `c_openmp/arbol.c` | `calcular_masa_de_hoja`, `sumar_masas_de_hijos` |
+| Ampliar el arreglo si faltan nodos | `c_openmp/arbol.c` | final de `construir_arbol` |
+
+### Fuerzas y energía
+
+| Concepto | Archivo | Función |
+|---|---|---|
+| Interacción gravitacional con suavizado ε | `c_openmp/fuerzas.c` | `sumar_atraccion` |
+| Recorrido del árbol para una partícula | `c_openmp/fuerzas.c` | `recorrer_arbol`, `fuerza_sobre_particula` |
+| Región paralela de fuerzas y tiempo por hilo | `c_openmp/fuerzas.c` | `calcular_aceleraciones` |
+| Desbalance entre hilos | `c_openmp/fuerzas.c` | `desbalance` |
+| Energía cinética / potencial / total | `c_openmp/fuerzas.c` | `energia_cinetica`, `energia_potencial`, `energia_total` |
+
+### Entrada, salida y medición
+
+| Concepto | Archivo | Función |
+|---|---|---|
 | Opciones de línea de comandos y valores por defecto | `c_openmp/configuracion.c` | `leer_configuracion` |
+| Lectura / escritura (en el orden del archivo) | `c_openmp/particulas.c` | `leer_particulas`, `escribir_particulas`, `escribir_aceleraciones`, `posiciones_por_fila` |
 | Cronómetro | `c_openmp/medicion.c` | `segundos_actuales` |
 | Tiempos por fase, resumen y CSV | `c_openmp/medicion.c` | `imprimir_paso`, `imprimir_resumen`, `agregar_fila_csv` |
-| Lectura / escritura de archivos | `c_openmp/particulas.c` | `leer_particulas`, `escribir_particulas`, `escribir_aceleraciones` |
 | Compilar normal / con sanitizadores | `c_openmp/Makefile` | `make`, `make sanitizado` |

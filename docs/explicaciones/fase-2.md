@@ -1,5 +1,7 @@
 # Fase 2: Barnes-Hut secuencial en C
 
+> **Nota.** En la fase 3 la construcción por inserción de este documento se reemplazó por la construcción paralela a partir del orden de Morton (ver `fase-3.md`). El código de esta fase sigue en el historial de git: `git show 777d430:c_openmp/arbol.c`. Las ideas de aquí (árbol en arreglo plano, hijos contiguos, criterio θ, recorrido, leapfrog) siguen vigentes.
+
 ## Qué se construyó
 
 Un programa completo en `c_openmp/` que lee las partículas, arma el octree en cada paso, calcula las fuerzas con el criterio θ, integra con leapfrog y mide el tiempo de cada fase. Es la base de la versión OpenMP (fase 3, en esta misma carpeta) y de la versión MPI (fase 5, que parte de una copia del árbol).

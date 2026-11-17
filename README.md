@@ -82,16 +82,16 @@ python comun/referencia_directa.py simular --particulas datos/uniforme_2000.txt 
 
 Todos los programas se ejecutan desde la raíz del repositorio.
 
-### C (`c_openmp/`)
+### C con OpenMP (`c_openmp/`)
 
 ```bash
 make -C c_openmp                 # bin/barnes_hut
 make -C c_openmp sanitizado      # bin/barnes_hut_sanitizado: detecta errores de memoria (lento)
-c_openmp/bin/barnes_hut --entrada datos/uniforme_2000.txt --pasos 100 --theta 0.5 --epsilon 0.01 --dt 0.001
+c_openmp/bin/barnes_hut --entrada datos/uniforme_2000.txt --pasos 100 --hilos 6 --reparto dinamico
 c_openmp/bin/barnes_hut --ayuda
 ```
 
-Opciones: `--entrada`, `--pasos`, `--dt`, `--theta`, `--epsilon`, `--cada-energia K`, `--guardar-aceleraciones f`, `--guardar-final f`, `--distribucion nombre`, `--csv f`.
+Opciones: `--entrada`, `--pasos`, `--dt`, `--theta`, `--epsilon`, `--hilos N`, `--reparto estatico|dinamico|costo`, `--cada-energia K`, `--guardar-aceleraciones f`, `--guardar-final f`, `--distribucion nombre`, `--csv f`. Con `--hilos 1` es la versión secuencial de referencia. En el CSV la versión aparece como `c_openmp_<reparto>`.
 
 ## Resultados
 

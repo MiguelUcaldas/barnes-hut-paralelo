@@ -11,18 +11,19 @@ typedef struct {
     double fuerzas;
     double integracion;
     double total;
+    double desbalance;   /* hilo más lento / promedio en las fuerzas (1 = perfecto) */
 } TiemposPorFase;
 
 double segundos_actuales(void);
 double error_relativo(double valor, double referencia);
 void sumar_tiempos(TiemposPorFase *acumulado, TiemposPorFase paso);
 
-void imprimir_entorno(const char *version, const Configuracion *config, int num_particulas, int trabajadores);
+void imprimir_entorno(const char *version, const Configuracion *config, int num_particulas);
 void imprimir_encabezado_pasos(void);
 void imprimir_paso(int paso, TiemposPorFase tiempos);
 void imprimir_energia(int paso, double energia, double energia_inicial);
 void imprimir_resumen(TiemposPorFase acumulado, int pasos, double energia_inicial, double energia_final);
-void agregar_fila_csv(const Configuracion *config, const char *version, int num_particulas, int trabajadores,
+void agregar_fila_csv(const Configuracion *config, const char *version, int num_particulas,
                       TiemposPorFase acumulado, double energia_inicial, double energia_final);
 
 #endif

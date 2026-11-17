@@ -1,183 +1,205 @@
 #include "arbol.h"
 
-#include <math.h>
-#include <stdbool.h>
+#include <omp.h>
 #include <stdlib.h>
 
 #include "memoria.h"
+#include "morton.h"
+
+/* Un subárbol con más partículas que esto se construye en una tarea aparte.
+ * Más pequeño no vale la pena: crear la tarea costaría más que construirlo. */
+#define UMBRAL_TAREA 1024
 
 Arbol crear_arbol(int num_particulas)
 {
     Arbol arbol;
-    /* Con partículas repartidas hay unos 2N a 3N nodos. Si no alcanza,
-     * nuevo_nodo duplica la capacidad. */
+    /* Con partículas repartidas hay unos 3N nodos, más lo que quede sin usar
+     * al final de los bloques de cada hilo. Si no alcanza, construir_arbol
+     * duplica la capacidad y vuelve a empezar. */
     arbol.capacidad = 4 * num_particulas + 8;
     arbol.nodos = reservar_memoria(arbol.capacidad, sizeof(Nodo));
-    arbol.siguiente = reservar_memoria(num_particulas, sizeof(int));
     arbol.num_nodos = 0;
-    arbol.profundidad_maxima = 0;
+    arbol.nodos_en_uso = 0;
+    arbol.num_bloques = omp_get_max_threads();
+    arbol.bloques = reservar_memoria(arbol.num_bloques, sizeof(BloqueDeNodos));
     return arbol;
 }
 
 void liberar_arbol(Arbol *arbol)
 {
     free(arbol->nodos);
-    free(arbol->siguiente);
+    free(arbol->bloques);
 }
 
-/* El cubo más pequeño que contiene todas las partículas. Se recalcula en cada
- * paso porque las partículas se mueven. */
-static void calcular_cubo_raiz(const Particulas *particulas, Vector3 *centro, double *mitad_lado)
+static void iniciar_nodo(Nodo *nodo, Vector3 centro, double mitad_lado)
 {
-    Vector3 minimo = particulas->posiciones[0];
-    Vector3 maximo = minimo;
-    for (int i = 1; i < particulas->cantidad; i++) {
-        Vector3 posicion = particulas->posiciones[i];
-        minimo.x = fmin(minimo.x, posicion.x);
-        minimo.y = fmin(minimo.y, posicion.y);
-        minimo.z = fmin(minimo.z, posicion.z);
-        maximo.x = fmax(maximo.x, posicion.x);
-        maximo.y = fmax(maximo.y, posicion.y);
-        maximo.z = fmax(maximo.z, posicion.z);
-    }
-    *centro = (Vector3){(minimo.x + maximo.x) / 2, (minimo.y + maximo.y) / 2, (minimo.z + maximo.z) / 2};
-    double lado = fmax(maximo.x - minimo.x, fmax(maximo.y - minimo.y, maximo.z - minimo.z));
-    *mitad_lado = lado / 2;
-}
-
-static int nuevo_nodo(Arbol *arbol, Vector3 centro, double mitad_lado)
-{
-    if (arbol->num_nodos == arbol->capacidad) {
-        arbol->capacidad *= 2;
-        arbol->nodos = ampliar_memoria(arbol->nodos, arbol->capacidad, sizeof(Nodo));
-    }
-    int indice = arbol->num_nodos++;
-    arbol->nodos[indice] = (Nodo){
+    *nodo = (Nodo){
         .centro = centro,
         .mitad_lado = mitad_lado,
         .masa = 0.0,
         .centro_de_masa = centro,
         .primer_hijo = SIN_HIJOS,
-        .particula = SIN_PARTICULA,
+        .primera_particula = 0,
+        .num_particulas = 0,
     };
-    return indice;
 }
 
-/* Número de octante de 0 a 7: un bit por eje (1 = lado positivo).
- * El hijo k tiene su centro desplazado hacia el lado que indican sus bits. */
-static int octante(Vector3 posicion, Vector3 centro)
+/* Reserva 8 nodos seguidos para los hijos.
+ *
+ * Varios hilos construyen a la vez y no pueden recibir el mismo lugar. Si
+ * cada reserva fuera un incremento atómico del contador global, todos los
+ * hilos pelearían por esa variable (su línea de caché viajaría de núcleo en
+ * núcleo en cada subdivisión) y la construcción no escalaría. Por eso cada
+ * hilo toma del contador un bloque de NODOS_POR_BLOQUE nodos con una sola
+ * operación atómica y reparte de ahí sin sincronizar: su bloque es solo suyo.
+ *
+ * Las tareas de OpenMP son "tied": entre leer omp_get_thread_num() y usar el
+ * bloque no hay ningún punto donde el hilo pueda cambiar de tarea.
+ *
+ * Si ya no hay espacio se devuelve SIN_HIJOS; el contador queda por encima
+ * de la capacidad y construir_arbol amplía el arreglo y repite. */
+static int reservar_hijos(Arbol *arbol)
 {
-    return (posicion.x >= centro.x) | (posicion.y >= centro.y) << 1 | (posicion.z >= centro.z) << 2;
+    BloqueDeNodos *bloque = &arbol->bloques[omp_get_thread_num()];
+    if (bloque->siguiente == bloque->fin) {
+        int inicio;
+        #pragma omp atomic capture
+        {
+            inicio = arbol->num_nodos;
+            arbol->num_nodos += NODOS_POR_BLOQUE;
+        }
+        bloque->siguiente = inicio;
+        bloque->fin = inicio + NODOS_POR_BLOQUE;
+    }
+    int primer_hijo = bloque->siguiente;
+    bloque->siguiente += 8;
+    return primer_hijo + 8 <= arbol->capacidad ? primer_hijo : SIN_HIJOS;
 }
 
-static void subdividir(Arbol *arbol, int indice)
+static void calcular_masa_de_hoja(Nodo *nodo, const Particulas *particulas)
 {
-    /* nuevo_nodo puede mover el arreglo con realloc: por eso se copian los
-     * datos del padre antes y después se usa el índice, nunca un puntero
-     * guardado de antes. */
-    Vector3 centro = arbol->nodos[indice].centro;
-    double cuarto = arbol->nodos[indice].mitad_lado / 2;
-    int primer_hijo = arbol->num_nodos;
+    double masa = 0.0;
+    Vector3 momento = {0.0, 0.0, 0.0};   /* Σ m·x, para dividir al final */
+    int ultima = nodo->primera_particula + nodo->num_particulas;
+    for (int j = nodo->primera_particula; j < ultima; j++) {
+        double m = particulas->masas[j];
+        masa += m;
+        momento.x += m * particulas->posiciones[j].x;
+        momento.y += m * particulas->posiciones[j].y;
+        momento.z += m * particulas->posiciones[j].z;
+    }
+    nodo->masa = masa;
+    if (masa > 0.0) {
+        nodo->centro_de_masa = (Vector3){momento.x / masa, momento.y / masa, momento.z / masa};
+    }
+}
+
+static void sumar_masas_de_hijos(Nodo *nodo, const Nodo *nodos)
+{
+    double masa = 0.0;
+    Vector3 momento = {0.0, 0.0, 0.0};
     for (int k = 0; k < 8; k++) {
+        const Nodo *hijo = &nodos[nodo->primer_hijo + k];
+        masa += hijo->masa;
+        momento.x += hijo->masa * hijo->centro_de_masa.x;
+        momento.y += hijo->masa * hijo->centro_de_masa.y;
+        momento.z += hijo->masa * hijo->centro_de_masa.z;
+    }
+    nodo->masa = masa;
+    if (masa > 0.0) {
+        nodo->centro_de_masa = (Vector3){momento.x / masa, momento.y / masa, momento.z / masa};
+    }
+}
+
+/* Los tres bits del código que dicen en qué hijo de un nodo de este nivel
+ * cae la partícula. La raíz (nivel 0) usa los tres bits más altos. */
+static int octante_en_nivel(uint64_t codigo, int nivel)
+{
+    return (int)((codigo >> (3 * (BITS_POR_EJE - 1 - nivel))) & 7);
+}
+
+/* Arma el subárbol del nodo con las partículas [primera, primera + cantidad).
+ * Como están ordenadas por código, las del hijo 0 van primero, luego las del
+ * hijo 1, etc.: basta recorrer el rango para cortarlo en 8 pedazos.
+ * Cada subárbol escribe solo en sus propios nodos, así que dos tareas nunca
+ * escriben en el mismo lugar; lo único compartido es el contador de nodos. */
+static void construir_nodo(Arbol *arbol, const Particulas *particulas, const uint64_t *codigos,
+                           int indice, int primera, int cantidad, int nivel)
+{
+    Nodo *nodo = &arbol->nodos[indice];
+    nodo->primera_particula = primera;
+    nodo->num_particulas = cantidad;
+
+    if (cantidad <= 1 || nivel == BITS_POR_EJE) {
+        calcular_masa_de_hoja(nodo, particulas);
+        return;
+    }
+    int primer_hijo = reservar_hijos(arbol);
+    if (primer_hijo == SIN_HIJOS) {
+        return;   /* sin espacio: construir_arbol lo detecta y repite */
+    }
+    nodo->primer_hijo = primer_hijo;
+
+    double cuarto = nodo->mitad_lado / 2;
+    int siguiente = primera;
+    int fin = primera + cantidad;
+    for (int k = 0; k < 8; k++) {
+        int desde = siguiente;
+        while (siguiente < fin && octante_en_nivel(codigos[siguiente], nivel) == k) {
+            siguiente++;
+        }
         Vector3 centro_hijo = {
-            centro.x + ((k & 1) ? cuarto : -cuarto),
-            centro.y + ((k & 2) ? cuarto : -cuarto),
-            centro.z + ((k & 4) ? cuarto : -cuarto),
+            nodo->centro.x + ((k & 1) ? cuarto : -cuarto),
+            nodo->centro.y + ((k & 2) ? cuarto : -cuarto),
+            nodo->centro.z + ((k & 4) ? cuarto : -cuarto),
         };
-        nuevo_nodo(arbol, centro_hijo, cuarto);
-    }
-    arbol->nodos[indice].primer_hijo = primer_hijo;
-}
+        iniciar_nodo(&arbol->nodos[primer_hijo + k], centro_hijo, cuarto);
 
-/* Baja desde la raíz hasta una hoja. Si la hoja está vacía, la partícula se
- * queda ahí. Si está ocupada, la hoja se divide en 8, la partícula que estaba
- * baja a su octante y se sigue bajando con la nueva. */
-static void insertar(Arbol *arbol, const Particulas *particulas, int i)
-{
-    Vector3 posicion = particulas->posiciones[i];
-    int actual = 0;
-    int profundidad = 0;
-    while (true) {
-        Nodo *nodo = &arbol->nodos[actual];
-        if (nodo->primer_hijo != SIN_HIJOS) {
-            actual = nodo->primer_hijo + octante(posicion, nodo->centro);
-            profundidad++;
-            continue;
-        }
-        if (nodo->particula == SIN_PARTICULA) {
-            nodo->particula = i;
-            break;
-        }
-        if (profundidad >= PROFUNDIDAD_MAXIMA) {
-            /* Partículas en el mismo punto: dividir no las separaría nunca.
-             * Se encadenan en esta hoja. */
-            arbol->siguiente[i] = nodo->particula;
-            nodo->particula = i;
-            break;
-        }
-        int anterior = nodo->particula;
-        nodo->particula = SIN_PARTICULA;
-        subdividir(arbol, actual);
-        Nodo *dividido = &arbol->nodos[actual];
-        int hijo = dividido->primer_hijo + octante(particulas->posiciones[anterior], dividido->centro);
-        arbol->nodos[hijo].particula = anterior;
-    }
-    if (profundidad > arbol->profundidad_maxima) {
-        arbol->profundidad_maxima = profundidad;
-    }
-}
-
-/* Los hijos siempre se crean después que su padre, así que tienen índices
- * mayores. Al recorrer el arreglo de atrás hacia adelante, cada nodo se
- * procesa después de todos sus hijos: es un recorrido de abajo hacia arriba
- * sin recursión. */
-static void calcular_masas(Arbol *arbol, const Particulas *particulas)
-{
-    for (int indice = arbol->num_nodos - 1; indice >= 0; indice--) {
-        Nodo *nodo = &arbol->nodos[indice];
-        double masa = 0.0;
-        Vector3 momento = {0.0, 0.0, 0.0};   /* Σ m·x, para dividir al final */
-
-        if (nodo->primer_hijo == SIN_HIJOS) {
-            for (int j = nodo->particula; j != SIN_PARTICULA; j = arbol->siguiente[j]) {
-                double m = particulas->masas[j];
-                masa += m;
-                momento.x += m * particulas->posiciones[j].x;
-                momento.y += m * particulas->posiciones[j].y;
-                momento.z += m * particulas->posiciones[j].z;
-            }
+        int cantidad_hijo = siguiente - desde;
+        if (cantidad_hijo > UMBRAL_TAREA) {
+            #pragma omp task
+            construir_nodo(arbol, particulas, codigos, primer_hijo + k, desde, cantidad_hijo, nivel + 1);
         } else {
-            for (int k = 0; k < 8; k++) {
-                const Nodo *hijo = &arbol->nodos[nodo->primer_hijo + k];
-                masa += hijo->masa;
-                momento.x += hijo->masa * hijo->centro_de_masa.x;
-                momento.y += hijo->masa * hijo->centro_de_masa.y;
-                momento.z += hijo->masa * hijo->centro_de_masa.z;
-            }
-        }
-
-        nodo->masa = masa;
-        if (masa > 0.0) {
-            nodo->centro_de_masa = (Vector3){momento.x / masa, momento.y / masa, momento.z / masa};
+            construir_nodo(arbol, particulas, codigos, primer_hijo + k, desde, cantidad_hijo, nivel + 1);
         }
     }
+    /* La masa del nodo necesita la de sus 8 hijos: hay que esperar a que
+     * terminen las tareas creadas arriba. */
+    #pragma omp taskwait
+    sumar_masas_de_hijos(nodo, arbol->nodos);
 }
 
-void construir_arbol(Arbol *arbol, const Particulas *particulas)
+void construir_arbol(Arbol *arbol, const Particulas *particulas, const uint64_t *codigos,
+                     Vector3 centro, double mitad_lado)
 {
-    arbol->num_nodos = 0;
-    arbol->profundidad_maxima = 0;
-    for (int i = 0; i < particulas->cantidad; i++) {
-        arbol->siguiente[i] = SIN_PARTICULA;
-    }
+    while (1) {
+        arbol->num_nodos = 1;
+        iniciar_nodo(&arbol->nodos[0], centro, mitad_lado);
+        for (int hilo = 0; hilo < arbol->num_bloques; hilo++) {
+            arbol->bloques[hilo].siguiente = arbol->bloques[hilo].fin = 0;
+        }
 
-    Vector3 centro;
-    double mitad_lado;
-    calcular_cubo_raiz(particulas, &centro, &mitad_lado);
-    nuevo_nodo(arbol, centro, mitad_lado);
+        /* Un hilo empieza en la raíz; los demás toman las tareas de los
+         * subárboles grandes a medida que aparecen. Un cúmulo denso genera
+         * más tareas, y las toma el hilo que esté libre: así se balancea. */
+        #pragma omp parallel
+        #pragma omp single
+        construir_nodo(arbol, particulas, codigos, 0, 0, particulas->cantidad, 0);
 
-    for (int i = 0; i < particulas->cantidad; i++) {
-        insertar(arbol, particulas, i);
+        if (arbol->num_nodos <= arbol->capacidad) {
+            arbol->nodos_en_uso = arbol->num_nodos;
+            for (int hilo = 0; hilo < arbol->num_bloques; hilo++) {
+                arbol->nodos_en_uso -= arbol->bloques[hilo].fin - arbol->bloques[hilo].siguiente;
+            }
+            return;
+        }
+        /* Faltó espacio. No se puede usar realloc mientras otros hilos
+         * escriben en el arreglo, así que se amplía aquí, ya sin hilos
+         * trabajando, y se construye de nuevo. La capacidad queda para los
+         * pasos siguientes, así que esto pasa muy pocas veces. */
+        while (arbol->capacidad < arbol->num_nodos) {
+            arbol->capacidad *= 2;
+        }
+        arbol->nodos = ampliar_memoria(arbol->nodos, arbol->capacidad, sizeof(Nodo));
     }
-    calcular_masas(arbol, particulas);
 }

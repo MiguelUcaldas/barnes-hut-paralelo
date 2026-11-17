@@ -95,3 +95,57 @@ Dónde está cada concepto, para encontrarlo rápido durante la demostración. S
 | Cronómetro | `c_openmp/medicion.c` | `segundos_actuales` |
 | Tiempos por fase, resumen y CSV | `c_openmp/medicion.c` | `imprimir_paso`, `imprimir_resumen`, `agregar_fila_csv` |
 | Compilar normal / con sanitizadores | `c_openmp/Makefile` | `make`, `make sanitizado` |
+
+## Python con multiprocessing (`python_mp/`)
+
+### Lo que se puede pedir modificar en vivo
+
+| Concepto | Archivo | Función / constante |
+|---|---|---|
+| **Criterio de apertura θ** | `python_mp/fuerzas.py` | `celdas_suficientemente_lejanas` |
+| **Reparto de grupos entre procesos** | `python_mp/trabajadores.py` | `repartir_grupos` |
+| Grupos por tarea en el reparto dinámico | `python_mp/trabajadores.py` | `GRUPOS_POR_TAREA` |
+| Cómo llega el árbol a los trabajadores | `python_mp/trabajadores.py` | `obtener_arbol` (y `--estrategia`) |
+| Tamaño de grupo | línea de comandos | `--tamano-grupo` (16) |
+| Valores por defecto de las opciones | `python_mp/barnes_hut.py` | `leer_configuracion` |
+
+### Árbol (arreglos planos de numpy)
+
+| Concepto | Archivo | Función |
+|---|---|---|
+| Campos del árbol (un arreglo por dato del nodo) | `python_mp/arbol.py` | `Arbol` |
+| Cubo raíz | `python_mp/arbol.py` | `calcular_cubo_raiz` |
+| Códigos Morton | `python_mp/arbol.py` | `codigos_morton` |
+| Construcción nivel por nivel | `python_mp/arbol.py` | `construir_arbol` |
+| Ordenar y reacomodar las partículas | `python_mp/barnes_hut.py` | `Simulacion.ordenar_por_morton` |
+
+### Fuerzas
+
+| Concepto | Archivo | Función |
+|---|---|---|
+| Rangos de índices a un solo arreglo | `python_mp/fuerzas.py` | `expandir_rangos` |
+| Recorrido del árbol para un grupo (lista de interacción) | `python_mp/fuerzas.py` | `lista_de_interaccion` |
+| Matriz grupo × fuentes, sin autointeracción | `python_mp/fuerzas.py` | `fuerzas_de_grupo` |
+
+### Procesos y memoria compartida
+
+| Concepto | Archivo | Función |
+|---|---|---|
+| Arreglos de numpy en memoria compartida | `python_mp/memoria_compartida.py` | `ArreglosCompartidos.crear`, `conectar`, `cerrar` |
+| Crear el pool (forkserver) y la memoria compartida | `python_mp/trabajadores.py` | `EquipoDeTrabajadores.__init__` |
+| Copiar el árbol a memoria compartida | `python_mp/trabajadores.py` | `EquipoDeTrabajadores.publicar_arbol` |
+| Repartir, lanzar tareas y medir desbalance | `python_mp/trabajadores.py` | `EquipoDeTrabajadores.calcular_aceleraciones` |
+| Inicio de cada trabajador | `python_mp/trabajadores.py` | `iniciar_trabajador` |
+| Lo que hace un trabajador con una tarea | `python_mp/trabajadores.py` | `calcular_tarea` |
+| Liberar procesos y memoria al final | `python_mp/trabajadores.py`, `barnes_hut.py` | `EquipoDeTrabajadores.cerrar`, `main` |
+
+### Paso, medición y archivos
+
+| Concepto | Archivo | Función |
+|---|---|---|
+| Hilos de numpy fijados en 1 | `python_mp/barnes_hut.py` | inicio del archivo |
+| Paso leapfrog completo | `python_mp/barnes_hut.py` | `avanzar_un_paso`, `media_patada`, `deriva` |
+| Orden → árbol → fuerzas (con tiempos) | `python_mp/barnes_hut.py` | `recalcular_aceleraciones` |
+| Energía | `python_mp/barnes_hut.py` | `Simulacion.energia_total` |
+| Resultados en el orden del archivo | `python_mp/barnes_hut.py` | `Simulacion.en_orden_del_archivo` |
+| Tiempos, resumen y CSV | `python_mp/medicion.py` | `TiemposPorFase`, `imprimir_resumen`, `agregar_fila_csv` |

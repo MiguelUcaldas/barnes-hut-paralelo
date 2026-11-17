@@ -93,6 +93,15 @@ c_openmp/bin/barnes_hut --ayuda
 
 Opciones: `--entrada`, `--pasos`, `--dt`, `--theta`, `--epsilon`, `--hilos N`, `--reparto estatico|dinamico|costo`, `--cada-energia K`, `--guardar-aceleraciones f`, `--guardar-final f`, `--distribucion nombre`, `--csv f`. Con `--hilos 1` es la versión secuencial de referencia. En el CSV la versión aparece como `c_openmp_<reparto>`.
 
+### Python con multiprocessing (`python_mp/`)
+
+```bash
+.venv/bin/python python_mp/barnes_hut.py --entrada datos/uniforme_2000.txt --pasos 100 --trabajadores 6
+.venv/bin/python python_mp/barnes_hut.py --ayuda
+```
+
+Opciones: `--entrada`, `--pasos`, `--dt`, `--theta`, `--epsilon`, `--trabajadores N`, `--estrategia compartida|local|copia` (cómo llega el árbol a los procesos), `--reparto estatico|dinamico|costo`, `--tamano-grupo G`, `--cada-energia K`, `--guardar-aceleraciones f`, `--guardar-final f`, `--distribucion nombre`, `--csv f`. En el CSV la versión aparece como `python_<estrategia>_<reparto>`.
+
 ## Resultados
 
 Cada versión imprime al terminar la verificación (error de fuerzas contra la suma directa y conservación de la energía) y los tiempos por fase. También agrega una fila a `resultados/mediciones.csv` con estas columnas:

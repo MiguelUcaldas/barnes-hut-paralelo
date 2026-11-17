@@ -30,3 +30,29 @@ Dónde está cada concepto, para encontrarlo rápido durante la demostración. S
 | Error relativo de energía | `comun/verificar.py` | `verificar_energia` |
 | Tolerancias de aprobación | `comun/verificar.py` | `TOLERANCIA_FUERZAS`, `TOLERANCIA_ENERGIA` |
 | Generar todos los archivos de datos | `scripts/generar_datos.sh` | — |
+
+## Barnes-Hut en C (`c_openmp/`)
+
+| Concepto | Archivo | Función |
+|---|---|---|
+| **Criterio de apertura θ** | `c_openmp/fuerzas.c` | `celda_suficientemente_lejana` |
+| Interacción gravitacional con suavizado ε | `c_openmp/fuerzas.c` | `sumar_atraccion` |
+| Recorrido del árbol para una partícula | `c_openmp/fuerzas.c` | `recorrer_arbol` |
+| Ciclo de fuerzas sobre todas las partículas | `c_openmp/fuerzas.c` | `calcular_aceleraciones` |
+| Energía cinética / potencial / total | `c_openmp/fuerzas.c` | `energia_cinetica`, `energia_potencial`, `energia_total` |
+| Estructura del nodo y del árbol | `c_openmp/arbol.h` | `Nodo`, `Arbol` |
+| Cubo raíz | `c_openmp/arbol.c` | `calcular_cubo_raiz` |
+| Elegir el octante de una posición | `c_openmp/arbol.c` | `octante` |
+| Crear los 8 hijos | `c_openmp/arbol.c` | `subdividir`, `nuevo_nodo` |
+| Insertar una partícula | `c_openmp/arbol.c` | `insertar` |
+| Masa y centro de masa de cada nodo | `c_openmp/arbol.c` | `calcular_masas` |
+| Construcción completa (todo lo anterior) | `c_openmp/arbol.c` | `construir_arbol` |
+| Partículas en el mismo punto | `c_openmp/arbol.h`, `arbol.c` | `PROFUNDIDAD_MAXIMA`, `siguiente`, `insertar` |
+| Paso leapfrog completo | `c_openmp/barnes_hut.c` | `avanzar_un_paso`, `media_patada`, `deriva` |
+| Cálculo inicial de fuerzas y ciclo de pasos | `c_openmp/barnes_hut.c` | `main` |
+| Nombre de la versión en el CSV | `c_openmp/barnes_hut.c` | `VERSION` |
+| Opciones de línea de comandos y valores por defecto | `c_openmp/configuracion.c` | `leer_configuracion` |
+| Cronómetro | `c_openmp/medicion.c` | `segundos_actuales` |
+| Tiempos por fase, resumen y CSV | `c_openmp/medicion.c` | `imprimir_paso`, `imprimir_resumen`, `agregar_fila_csv` |
+| Lectura / escritura de archivos | `c_openmp/particulas.c` | `leer_particulas`, `escribir_particulas`, `escribir_aceleraciones` |
+| Compilar normal / con sanitizadores | `c_openmp/Makefile` | `make`, `make sanitizado` |

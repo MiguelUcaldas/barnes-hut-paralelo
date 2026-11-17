@@ -23,8 +23,8 @@ import numpy as np
 from formato import leer_aceleraciones, leer_particulas
 from referencia_directa import aceleraciones_directas, energia_total
 
-# Con θ = 0,5 Barnes-Hut suele dar un error promedio cercano a 0,1 %. Un
-# promedio por encima del 1 % indica un error en el código, no en θ.
+# Con θ = 0,5 Barnes-Hut da un error promedio cercano a 0,5 %. Un promedio
+# por encima del 1 % con θ ≤ 0,5 indica un error en el código, no en θ.
 TOLERANCIA_FUERZAS = 1e-2
 TOLERANCIA_ENERGIA = 1e-3
 
@@ -32,7 +32,9 @@ TOLERANCIA_ENERGIA = 1e-3
 def errores_relativos(aceleraciones, referencia):
     diferencias = np.linalg.norm(aceleraciones - referencia, axis=1)
     magnitudes = np.linalg.norm(referencia, axis=1)
-    return diferencias / magnitudes
+    # Si la aceleración exacta es cero (por ejemplo, todas las partículas en
+    # un mismo punto), se usa el error absoluto para no dividir 0/0.
+    return diferencias / np.where(magnitudes > 0, magnitudes, 1.0)
 
 
 def verificar_fuerzas(ruta_particulas, ruta_aceleraciones, epsilon, tolerancia):

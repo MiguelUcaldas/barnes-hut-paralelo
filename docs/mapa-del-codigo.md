@@ -149,3 +149,50 @@ Dónde está cada concepto, para encontrarlo rápido durante la demostración. S
 | Energía | `python_mp/barnes_hut.py` | `Simulacion.energia_total` |
 | Resultados en el orden del archivo | `python_mp/barnes_hut.py` | `Simulacion.en_orden_del_archivo` |
 | Tiempos, resumen y CSV | `python_mp/medicion.py` | `TiemposPorFase`, `imprimir_resumen`, `agregar_fila_csv` |
+
+## MPI (`mpi/`)
+
+### Lo que se puede pedir modificar en vivo
+
+| Concepto | Archivo | Función / constante |
+|---|---|---|
+| **Criterio de apertura θ** (para fuerzas y para el árbol esencial) | `mpi/criterio.h` | `celda_suficientemente_lejana` |
+| **Estrategia de particionado** | `mpi/particion.c` | `calcular_cortes` (y `--particion`) |
+| Peso de cada partícula al particionar | `mpi/particion.c` | `peso` |
+| Muestras por proceso para los cortes | `mpi/particion.c` | `MUESTRAS_POR_PROCESO` |
+| Particionado por defecto | `mpi/configuracion.c` | `.particion` en `leer_configuracion` |
+
+### Particionado y reparto de partículas
+
+| Concepto | Archivo | Función |
+|---|---|---|
+| Cubo raíz global (`MPI_Allreduce` de mínimos y máximos) | `mpi/particion.c` | `calcular_cubo_raiz_global` |
+| Códigos Morton | `mpi/morton.c` | `codigo_morton`, `octante_en_nivel` |
+| Muestras locales a igual peso | `mpi/particion.c` | `tomar_muestras` |
+| Cortes de la curva (`MPI_Allgather` de muestras) | `mpi/particion.c` | `calcular_cortes` |
+| Envío de cada partícula a su dueño (`MPI_Alltoall` + `MPI_Alltoallv`) | `mpi/particion.c` | `intercambiar_particulas` |
+| Todo lo anterior junto | `mpi/particion.c` | `repartir_particulas` |
+
+### Árbol local y árbol esencial
+
+| Concepto | Archivo | Función |
+|---|---|---|
+| Nodo (con hojas vacías, normales y resumidas) | `mpi/arbol.h` | `Nodo`, `Arbol` |
+| Construcción del árbol local por Morton | `mpi/arbol.c` | `construir_arbol_local`, `construir_nodo` |
+| Caja del dominio de cada proceso (`MPI_Allgather`) | `mpi/esencial.c` | `publicar_cajas` |
+| Extraer lo que necesita otro proceso | `mpi/esencial.c` | `extraer_arbol_podado` |
+| Enviar un bloque distinto a cada proceso | `mpi/esencial.c` | `enviar_a_todos` |
+| Intercambio completo de árboles esenciales | `mpi/esencial.c` | `intercambiar_arboles_esenciales` |
+
+### Fuerzas, paso y medición
+
+| Concepto | Archivo | Función |
+|---|---|---|
+| Recorrido (sirve para el árbol local y los recibidos) | `mpi/fuerzas.c` | `recorrer_arbol` |
+| Fuerzas sobre las partículas locales | `mpi/fuerzas.c` | `calcular_aceleraciones` |
+| Energía (`MPI_Allreduce` de las sumas locales) | `mpi/barnes_hut.c` | `energia_total` |
+| Paso leapfrog y barrera de la foto congelada | `mpi/barnes_hut.c` | `avanzar_un_paso`, `recalcular_aceleraciones` |
+| Lectura y reparto inicial (`MPI_Bcast` + `MPI_Scatterv`) | `mpi/entrada_salida.c` | `leer_y_repartir` |
+| Escritura en el orden del archivo (`MPI_Gatherv`) | `mpi/entrada_salida.c` | `reunir_en_raiz`, `escribir_*_globales` |
+| Tiempos del proceso más lento y desbalance | `mpi/medicion.c` | `reunir_tiempos` |
+| Partículas por proceso y tamaño del árbol esencial | `mpi/barnes_hut.c` | `imprimir_reparto` |

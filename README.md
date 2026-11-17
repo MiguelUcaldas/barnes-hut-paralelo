@@ -93,6 +93,18 @@ c_openmp/bin/barnes_hut --ayuda
 
 Opciones: `--entrada`, `--pasos`, `--dt`, `--theta`, `--epsilon`, `--hilos N`, `--reparto estatico|dinamico|costo`, `--cada-energia K`, `--guardar-aceleraciones f`, `--guardar-final f`, `--distribucion nombre`, `--csv f`. Con `--hilos 1` es la versión secuencial de referencia. En el CSV la versión aparece como `c_openmp_<reparto>`.
 
+### MPI (`mpi/`)
+
+```bash
+make -C mpi                      # bin/barnes_hut
+make -C mpi sanitizado           # bin/barnes_hut_sanitizado: detecta comportamiento indefinido (lento)
+mpirun -np 6 mpi/bin/barnes_hut --entrada datos/uniforme_2000.txt --pasos 100 --particion costo
+mpirun --use-hwthread-cpus -np 12 mpi/bin/barnes_hut --entrada ...    # de 7 a 12 procesos
+mpirun --oversubscribe -np 16 mpi/bin/barnes_hut --entrada ...        # más de 12 procesos
+```
+
+Opciones: `--entrada`, `--pasos`, `--dt`, `--theta`, `--epsilon`, `--particion volumen|cantidad|costo`, `--cada-energia K`, `--guardar-aceleraciones f`, `--guardar-final f`, `--distribucion nombre`, `--csv f`. El número de procesos lo da `mpirun -np`. En el CSV la versión aparece como `mpi_<particion>`; `t_construccion` incluye el árbol esencial y `t_ordenamiento` incluye el reparto de partículas entre procesos.
+
 ### Python con multiprocessing (`python_mp/`)
 
 ```bash

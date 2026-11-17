@@ -8,13 +8,13 @@ LDLIBS = -lm
 FUENTES = barnes_hut.c configuracion.c particulas.c morton.c arbol.c fuerzas.c medicion.c
 CABECERAS = configuracion.h particulas.h morton.h arbol.h fuerzas.h medicion.h memoria.h
 
-bin/barnes_hut: $(FUENTES) $(CABECERAS)
+bin/barnes_hut: $(FUENTES) $(CABECERAS) Makefile
 	mkdir -p bin
 	$(CC) $(CFLAGS) -o $@ $(FUENTES) $(LDLIBS)
 
 # Detecta accesos fuera de los arreglos, memoria liberada y comportamiento
 # indefinido. Es varias veces más lenta: solo para probar con N pequeño.
-bin/barnes_hut_sanitizado: $(FUENTES) $(CABECERAS)
+bin/barnes_hut_sanitizado: $(FUENTES) $(CABECERAS) Makefile
 	mkdir -p bin
 	$(CC) -O1 -g -std=gnu17 -fopenmp -Wall -Wextra -fsanitize=address,undefined -o $@ $(FUENTES) $(LDLIBS)
 

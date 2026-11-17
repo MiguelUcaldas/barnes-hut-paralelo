@@ -1,0 +1,21 @@
+# Indicaciones locales, no hacen parte del proyecto
+CLAUDE.md
+
+# Entorno de Python
+.venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# Compilados
+*.o
+bin/
+
+# Archivos de partículas y salidas grandes (se regeneran con los scripts)
+datos/grandes/
+resultados/salidas/
+
+# Editor y sistema
+.vscode/
+*.swp
+Thumbs.db
